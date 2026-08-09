@@ -1,8 +1,8 @@
 # Engineering Decisions & Architecture Tradeoffs
 
 ### 1. Handling Gemini Rate Limits & Retries
-- **Design Choice**: Implemented exponential backoff with jitter (`1s`, `2s`, `4s`) in `backend/gemini.py` for API calls.
-- **Cheap Heuristic Prefilter**: Applied `cheap_prefilter()` in `rules.py` prior to invoking the LLM. Obvious out-of-office auto-replies and newsletters with standard footer signatures (`unsubscribe`, `manage subscription`) are filtered deterministically. This saves ~15-20% of API call volume and prevents quota exhaustion during 100-email batch ingestions.
+- **Design Choice**: Implemented adaptive backoff in `backend/gemini.py` for API calls. On 429 quota errors the sleep time scales as `5s × (attempt + 1)` (5s, 10s, 15s…) across 6 attempts. For other transient errors standard exponential backoff (`2^attempt`) is used. Additionally, a `4.1s` pacing sleep is inserted between every email in the ingestion loop to stay within the 15 RPM free-tier limit.
+- **Cheap Heuristic Prefilter**: Applied `cheap_prefilter()` in `rules.py` prior to invoking the LLM. Obvious out-of-office auto-replies and newsletters with standard footer signatures (`unsubscribe`, `manage subscription`) are filtered deterministically. This saves ~15-20% of API call volume and prevents quota exhaustion during large batch ingestions.
 
 ### 2. Enforcing Idempotency & Thread Reconciliation
 - **Idempotency**: Indexed `EmailLog` by `(candidate_id, email_id)`. Re-posting an identical email short-circuits the pipeline immediately without calling Gemini or mutating existing tasks.

@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, date
 from typing import Optional
-from sqlmodel import SQLModel, Field, UniqueConstraint
+from sqlmodel import SQLModel, Field, UniqueConstraint, Index
 
 
 def new_id(prefix: str) -> str:
@@ -18,7 +18,11 @@ class Task(SQLModel, table=True):
     thread replies update instead of duplicate (Run 3), using ONE code
     path (an upsert) instead of two separate special cases.
     """
-    __table_args__ = (UniqueConstraint("candidate_id", "thread_id", name="uq_candidate_thread"),)
+    # We use an Index instead of a UniqueConstraint here.
+    # The ingestion pipeline (/ingest) enforces thread reconciliation and idempotency
+    # at the application layer, but the raw POST /tasks endpoint must not crash with 500
+    # if duplicate thread_ids are posted directly.
+    __table_args__ = (Index("idx_candidate_thread", "candidate_id", "thread_id"),)
 
     task_id: str = Field(default_factory=lambda: new_id("tsk"), primary_key=True)
     candidate_id: str = Field(index=True)

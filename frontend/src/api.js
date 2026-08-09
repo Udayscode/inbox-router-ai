@@ -4,7 +4,7 @@
 export const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 
 // Every request carries the same candidate_id everywhere — set once here.
-export const CANDIDATE_ID = import.meta.env.VITE_CANDIDATE_ID || "your.email@gmail.com";
+export const CANDIDATE_ID = import.meta.env.VITE_CANDIDATE_ID || "uday.jhariyaa@gmail.com";
 
 async function request(path, options = {}) {
   const res = await fetch(`${BACKEND_URL}${path}`, {

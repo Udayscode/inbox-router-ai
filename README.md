@@ -1,8 +1,8 @@
 # Alumnx Sales Inbox Router
 
 **Candidate ID**: `uday.jhariyaa@gmail.com`  
-**Backend API Base URL**: `https://inbox-router-backend.onrender.com`  
-**Frontend App URL**: `https://inbox-router-frontend.vercel.app`  
+**Backend API Base URL**: `https://inbox-router-backend.onrender.com` *(update after deployment)*  
+**Frontend App URL**: `https://inbox-router-frontend.onrender.com` *(update after deployment)*  
 
 ---
 
@@ -18,16 +18,22 @@ The system features:
 
 ---
 
-## 🛠️ Quickstart (3 Commands or Fewer)
+## 🛠️ Quickstart
 
-### 1. Backend Setup
+### Docker (Recommended)
 ```bash
-cd backend && python3 -m venv .venv && source .venv/bin/pip install -r requirements.txt
-uvicorn main:app --reload --port 8000
+cp .env.example .env   # add your GEMINI_API_KEY
+docker compose up --build
 ```
+Backend → `http://localhost:8000` · Frontend → `http://localhost:3000`
 
-### 2. Frontend Setup
+### Manual
 ```bash
+# Backend
+cd backend && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+uvicorn main:app --reload --port 8000
+
+# Frontend (separate terminal)
 cd frontend && npm install && npm run dev
 ```
 
@@ -37,9 +43,9 @@ cd frontend && npm install && npm run dev
 
 Copy `.env.example` to `.env`:
 ```env
-CANDIDATE_ID=priya.sharma@gmail.com
+CANDIDATE_ID=uday.jhariyaa@gmail.com
 GEMINI_API_KEY=your_gemini_api_key_here
-GEMINI_MODEL=gemini-2.0-flash
+GEMINI_MODEL=gemini-3.1-flash-lite
 DATABASE_URL=sqlite:///./local_dev.db
 FRONTEND_ORIGIN=*
 ```
