@@ -16,7 +16,7 @@ from parsing import parse_due_date
 import gemini
 import query_engine
 
-app = FastAPI(title="Alumnx Sales Inbox Router")
+app = FastAPI(title="Sales Inbox Router")
 
 app.add_middleware(
     CORSMiddleware,
@@ -203,6 +203,9 @@ def _process_one_email(email: dict, cid: str, run_id: str, session: Session) -> 
     classification = gemini.classify_email(
         subject, body, email.get("from_name", ""), email.get("from_email", ""), email.get("cc", [])
     )
+    # Rate limit pacing: 15 RPM means 1 request every 4 seconds (60s / 15 = 4s).
+    # Sleeping 4s between LLM calls ensures a batch never triggers 429 quota errors.
+    time.sleep(4.1)
 
     if not classification.get("is_actionable"):
         _log(session, cid, email_id, thread_id, run_id, "skipped",

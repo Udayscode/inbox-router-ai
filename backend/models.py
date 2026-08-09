@@ -30,7 +30,7 @@ class Task(SQLModel, table=True):
     assignee_id: str
     category: str
     priority: str
-    due_date: Optional[date] = None
+    due_date: Optional[str] = None
     deal_value_inr: Optional[int] = None
     company_name: Optional[str] = None
     confidence: float

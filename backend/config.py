@@ -12,7 +12,7 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./local_dev.db")
 
 # --- Gemini -----------------------------------------------------------
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite")
 
 # --- CORS -----------------------------------------------------------------
 FRONTEND_ORIGIN = os.environ.get("FRONTEND_ORIGIN", "*")

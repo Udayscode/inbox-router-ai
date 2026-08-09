@@ -55,7 +55,7 @@ CHAT_QUERY_SYSTEM_PROMPT = """You translate a natural-language question about a 
 batch into ONE structured query. Return ONLY JSON, no markdown fences.
 
 Available query types:
-- "count_by_category": no params
+- "count_by_category": no params (Use this for general category counts, proposals, RFPs, marketing vs spam, etc.)
 - "count_skipped_by_reason": no params
 - "list_triage": no params
 - "spurious_rate": no params
@@ -63,8 +63,7 @@ Available query types:
 - "sum_deal_value": no params (sums deal_value_inr across category=enterprise_rfp tasks)
 - "thread_update_history": no params (threads with >1 update)
 - "count_field_value": params: {"field": "category"|"skip_reason", "value": "<the value asked about>"}
-  (use this for narrow asks like "how many GST refund emails" that don't match a category/reason
-  you recognize — pass their literal term as value)
+  (use this ONLY for specific terms like "GST refund" or custom terms that are NOT general categories like proposal/RFP)
 - "unsupported": params: {"reason": "<why this can't be answered, e.g. it asks for an action>"}
 
 Return exactly: {"query_type": "...", "params": {...}}
@@ -73,7 +72,7 @@ ask about existing data, use "unsupported".
 """
 
 
-def _call_gemini(prompt: str, system: str, retries: int = 3) -> str:
+def _call_gemini(prompt: str, system: str, retries: int = 5) -> str:
     model = genai.GenerativeModel(GEMINI_MODEL, system_instruction=system)
     last_err = None
     for attempt in range(retries):
@@ -85,7 +84,12 @@ def _call_gemini(prompt: str, system: str, retries: int = 3) -> str:
             return resp.text
         except Exception as e:
             last_err = e
-            time.sleep(2 ** attempt)  # 1s, 2s, 4s backoff
+            err_str = str(e)
+            if "429" in err_str or "Quota exceeded" in err_str:
+                # If rate limit (15 RPM), wait 4.5 seconds so rate limit bucket resets
+                time.sleep(4.5 * (attempt + 1))
+            else:
+                time.sleep(2 ** attempt)  # 1s, 2s, 4s backoff for network glitches
     raise RuntimeError(f"Gemini call failed after {retries} attempts: {last_err}")
 
 
