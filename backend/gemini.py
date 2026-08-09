@@ -72,7 +72,7 @@ ask about existing data, use "unsupported".
 """
 
 
-def _call_gemini(prompt: str, system: str, retries: int = 5) -> str:
+def _call_gemini(prompt: str, system: str, retries: int = 6) -> str:
     model = genai.GenerativeModel(GEMINI_MODEL, system_instruction=system)
     last_err = None
     for attempt in range(retries):
@@ -86,10 +86,10 @@ def _call_gemini(prompt: str, system: str, retries: int = 5) -> str:
             last_err = e
             err_str = str(e)
             if "429" in err_str or "Quota exceeded" in err_str:
-                # If rate limit (15 RPM), wait 4.5 seconds so rate limit bucket resets
-                time.sleep(4.5 * (attempt + 1))
+                # 15 RPM free tier bucket backoff: 5s, 10s, 15s...
+                time.sleep(5.0 * (attempt + 1))
             else:
-                time.sleep(2 ** attempt)  # 1s, 2s, 4s backoff for network glitches
+                time.sleep(2 ** attempt)
     raise RuntimeError(f"Gemini call failed after {retries} attempts: {last_err}")
 
 

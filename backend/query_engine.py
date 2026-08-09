@@ -112,6 +112,11 @@ def _thread_update_history(cid: str, s: Session) -> dict:
 
 def _count_field_value(cid: str, s: Session, params: dict) -> dict:
     field, value = params.get("field"), params.get("value")
+    # Map common natural language synonyms to actual DB category enums
+    if value in ["proposal", "rfp", "proposals", "rfps", "proposal_rfp"]:
+        value = "enterprise_rfp"
+        field = "category"
+
     col = Task.category if field == "category" else EmailLog.skip_reason
     model = Task if field == "category" else EmailLog
     count = s.exec(select(func.count()).where(model.candidate_id == cid, col == value)).one()
