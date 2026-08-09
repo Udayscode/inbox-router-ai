@@ -1,8 +1,8 @@
 # Alumnx Sales Inbox Router
 
 **Candidate ID**: `uday.jhariyaa@gmail.com`  
-**Backend API Base URL**: `https://inbox-router-backend.onrender.com` *(update after deployment)*  
-**Frontend App URL**: `https://inbox-router-frontend.onrender.com` *(update after deployment)*  
+**Backend API Base URL**: `https://inbox-router-ai.onrender.com`  
+**Frontend App URL**: `https://inbox-router-ai.vercel.app`  
 
 ---
 
