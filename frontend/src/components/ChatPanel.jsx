@@ -9,10 +9,11 @@ const SAMPLE_QUESTIONS = [
   "What's the total deal value of all open RFPs?",
 ];
 
-export default function ChatPanel() {
+export default function ChatPanel({ batchId }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingStatus, setLoadingStatus] = useState('thinking');
   const bottomRef = useRef(null);
 
   useEffect(() => {
@@ -24,13 +25,25 @@ export default function ChatPanel() {
     setMessages((m) => [...m, { role: 'user', text: query }]);
     setInput('');
     setLoading(true);
+    setLoadingStatus('thinking');
+
+    // After 8s with no response, the backend is likely retrying due to rate limits.
+    const slowTimer = setTimeout(() => setLoadingStatus('retrying'), 8000);
+
     try {
-      const { answer, supporting_data } = await askChat(query);
+      const { answer, supporting_data } = await askChat(query, batchId);
+      clearTimeout(slowTimer);
       setMessages((m) => [...m, { role: 'assistant', text: answer, supporting_data }]);
     } catch (e) {
-      setMessages((m) => [...m, { role: 'assistant', text: `Error: ${e.message}`, error: true }]);
+      clearTimeout(slowTimer);
+      const isRateLimit = e.status === 429 || /rate limit|quota|429/i.test(e.message);
+      const displayMsg = isRateLimit
+        ? '⚠️ Gemini API quota exceeded. Free tier limits: 15 req/min (wait ~60s and retry) or 500 req/day (resets at midnight IST). If retrying in a minute fails, the daily quota is exhausted.'
+        : `Error: ${e.message}`;
+      setMessages((m) => [...m, { role: 'assistant', text: displayMsg, error: true, isRateLimit }]);
     } finally {
       setLoading(false);
+      setLoadingStatus('thinking');
     }
   }
 
@@ -113,7 +126,7 @@ export default function ChatPanel() {
             paddingTop: 40,
           }}>
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 8, display: 'block', margin: '0 auto 8px' }}>
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
             </svg>
             Ask a question or pick one above
           </div>
@@ -186,13 +199,19 @@ export default function ChatPanel() {
             }}>AI</div>
             <div style={{
               padding: '10px 16px',
-              background: 'var(--surface-2)',
-              border: '1px solid var(--border)',
+              background: loadingStatus === 'retrying' ? 'rgba(255,149,0,0.06)' : 'var(--surface-2)',
+              border: `1px solid ${loadingStatus === 'retrying' ? 'rgba(255,149,0,0.25)' : 'var(--border)'}`,
               borderRadius: '12px 12px 12px 4px',
               color: 'var(--text-secondary)',
               fontSize: 13,
             }}>
-              <TypingDots />
+              {loadingStatus === 'retrying' ? (
+                <span style={{ color: 'var(--orange)', fontSize: 12 }}>
+                  ⏳ Rate limited — backend retrying Gemini automatically…
+                </span>
+              ) : (
+                <TypingDots />
+              )}
             </div>
           </div>
         )}
@@ -246,7 +265,7 @@ export default function ChatPanel() {
           }}
         >
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
           </svg>
           Send
         </button>

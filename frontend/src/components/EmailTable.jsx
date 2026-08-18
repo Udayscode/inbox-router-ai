@@ -50,6 +50,7 @@ export default function EmailTable({ emails, batchNumber = 1, onIngested }) {
     }
     setTotalChunks(chunks.length);
 
+    const batchId = `batch_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     let totals = { processed: 0, tasks_created: 0, tasks_updated: 0, skipped: 0, errors: [] };
 
     try {
@@ -71,7 +72,7 @@ export default function EmailTable({ emails, batchNumber = 1, onIngested }) {
         }, 4200);
 
         try {
-          const r = await ingestEmails(chunk);
+          const r = await ingestEmails(chunk, batchId);
           clearInterval(timer);
           setProcessedInCurrentChunk(chunk.length); // complete the chunk
 
@@ -88,7 +89,7 @@ export default function EmailTable({ emails, batchNumber = 1, onIngested }) {
           throw err;
         }
       }
-      onIngested?.(totals);
+      onIngested?.(totals, batchId);
     } catch (e) {
       setError(e.message);
     } finally {

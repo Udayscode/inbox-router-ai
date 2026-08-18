@@ -55,6 +55,7 @@ class EmailLog(SQLModel, table=True):
     email_id: str = Field(index=True)
     thread_id: str = Field(index=True)
     run_id: Optional[str] = Field(default=None, index=True)
+    batch_id: Optional[str] = Field(default=None, index=True)
 
     decision: str  # 'created' | 'updated' | 'skipped'
     skip_reason: Optional[str] = None  # 'out_of_office' | 'newsletter' | 'spam' | None
@@ -72,6 +73,7 @@ class EmailLog(SQLModel, table=True):
 class Run(SQLModel, table=True):
     run_id: str = Field(default_factory=lambda: new_id("run"), primary_key=True)
     candidate_id: str = Field(index=True)
+    batch_id: Optional[str] = Field(default=None, index=True)
     started_at: datetime = Field(default_factory=datetime.utcnow)
     finished_at: Optional[datetime] = None
     processed: int = 0

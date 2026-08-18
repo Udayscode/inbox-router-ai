@@ -8,6 +8,7 @@ export default function App() {
   const [emails, setEmails] = useState([]);
   const [routed, setRouted] = useState(false);
   const [batchNumber, setBatchNumber] = useState(1);
+  const [latestBatchId, setLatestBatchId] = useState(null);
   const [backendStatus, setBackendStatus] = useState('checking'); // 'checking' | 'online' | 'offline'
   const [retrySecs, setRetrySecs] = useState(5);
   const chatRef = useRef(null);
@@ -17,7 +18,7 @@ export default function App() {
 
     async function checkHealth() {
       try {
-        const res = await fetch(`${BACKEND_URL}/health`);
+        const res = await fetch(`${BACKEND_URL}/healthz`);
         if (res.ok) {
           setBackendStatus('online');
         } else {
@@ -54,8 +55,9 @@ export default function App() {
     setRouted(false);
   }
 
-  function handleIngested() {
+  function handleIngested(totals, batchId) {
     setRouted(true);
+    setLatestBatchId(batchId);
     setBatchNumber(prev => prev + 1);
     setTimeout(() => chatRef.current?.scrollIntoView({ behavior: 'smooth' }), 300);
   }
@@ -123,7 +125,7 @@ export default function App() {
         <>
           <EmailInput onBatchReady={handleBatchReady} />
           {emails.length > 0 && <EmailTable emails={emails} batchNumber={batchNumber} onIngested={handleIngested} />}
-          {routed && <div ref={chatRef}><ChatPanel /></div>}
+          {routed && <div ref={chatRef}><ChatPanel batchId={latestBatchId} /></div>}
         </>
       ) : (
         <div style={{

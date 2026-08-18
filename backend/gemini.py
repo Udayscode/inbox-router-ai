@@ -72,15 +72,15 @@ ask about existing data, use "unsupported".
 """
 
 
-def _call_gemini(prompt: str, system: str, retries: int = 6) -> str:
+def _call_gemini(prompt: str, system: str, retries: int = 6, json_mode: bool = True) -> str:
     model = genai.GenerativeModel(GEMINI_MODEL, system_instruction=system)
     last_err = None
+    gen_config = {"temperature": 0.1}
+    if json_mode:
+        gen_config["response_mime_type"] = "application/json"
     for attempt in range(retries):
         try:
-            resp = model.generate_content(
-                prompt,
-                generation_config={"response_mime_type": "application/json", "temperature": 0.1},
-            )
+            resp = model.generate_content(prompt, generation_config=gen_config)
             return resp.text
         except Exception as e:
             last_err = e
@@ -111,12 +111,14 @@ def phrase_answer(question: str, query_result: dict) -> str:
     the raw emails, and is explicitly told not to add numbers that
     aren't in query_result."""
     system = (
-        "You answer a question using ONLY the JSON data provided. Never state a number that "
-        "isn't present in the data. If a count is 0, say so plainly and directly. If the data "
-        "indicates the question is unsupported or out of scope, say so plainly and do not "
-        "attempt to answer anyway. Keep the answer to 2-3 sentences, no markdown."
+        "You answer a question about an email routing inbox using ONLY the JSON data provided.\n"
+        "The data contains 'current_batch' (the specific batch of emails just uploaded/processed) and 'all_time' (historical totals across all batches).\n"
+        "Rules:\n"
+        "1. Prioritize answering based on 'current_batch' when the question asks about this batch, these emails, or without specifying historical scope.\n"
+        "2. If the user asks about overall/historical metrics (e.g. 'so far', 'total', 'all time', 'history'), answer using 'all_time'.\n"
+        "3. You may briefly mention the overall historical total as secondary context if helpful.\n"
+        "4. Never invent or hallucinate numbers not present in the data. If a count is 0, state it plainly.\n"
+        "5. Keep the answer concise: 1-3 natural sentences, no markdown formatting."
     )
     prompt = f"Question: {question}\n\nData: {json.dumps(query_result)}"
-    model = genai.GenerativeModel(GEMINI_MODEL, system_instruction=system)
-    resp = model.generate_content(prompt, generation_config={"temperature": 0.1})
-    return resp.text.strip()
+    return _call_gemini(prompt, system, json_mode=False).strip()

@@ -33,8 +33,9 @@ def on_startup():
 
 
 @app.get("/health")
+@app.get("/healthz")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "service": "sales-inbox-router"}
 
 
 # ---------------------------------------------------------------------------
@@ -136,22 +137,29 @@ def sample_emails(n: int = 250):
 class IngestRequest(BaseModel):
     candidate_id: str
     emails: List[dict]
+    batch_id: Optional[str] = None
 
 
 @app.post("/ingest")
 def ingest(payload: IngestRequest, session: Session = Depends(get_session)):
     cid = normalize_candidate_id(payload.candidate_id)
-    run = Run(candidate_id=cid)
+    run = Run(candidate_id=cid, batch_id=payload.batch_id)
     session.add(run)
     session.commit()
     session.refresh(run)
+
+    batch_id = payload.batch_id or run.run_id
+    if not run.batch_id:
+        run.batch_id = batch_id
+        session.add(run)
+        session.commit()
 
     processed = created = updated = skipped = 0
     errors = []
 
     for email in payload.emails:
         try:
-            result = _process_one_email(email, cid, run.run_id, session)
+            result = _process_one_email(email, cid, run.run_id, session, batch_id=batch_id)
             processed += 1
             if result == "created":
                 created += 1
@@ -173,10 +181,18 @@ def ingest(payload: IngestRequest, session: Session = Depends(get_session)):
         "tasks_updated": updated,
         "skipped": skipped,
         "errors": errors,
+        "run_id": run.run_id,
+        "batch_id": batch_id,
     }
 
 
-def _process_one_email(email: dict, cid: str, run_id: str, session: Session) -> str:
+def _process_one_email(
+    email: dict,
+    cid: str,
+    run_id: str,
+    session: Session,
+    batch_id: Optional[str] = None,
+) -> str:
     """Returns 'created' | 'updated' | 'skipped'. Encapsulates the full
     per-email pipeline described in ARCHITECTURE.md §3."""
     email_id = email["email_id"]
@@ -196,7 +212,7 @@ def _process_one_email(email: dict, cid: str, run_id: str, session: Session) -> 
     # 2. Cheap pre-filter — catches obvious OOO/newsletter without a Gemini call.
     skip_reason = cheap_prefilter(subject, body)
     if skip_reason:
-        _log(session, cid, email_id, thread_id, run_id, "skipped", skip_reason=skip_reason,
+        _log(session, cid, email_id, thread_id, run_id, "skipped", batch_id=batch_id, skip_reason=skip_reason,
              reasoning=f"Matched {skip_reason} heuristic before classification.")
         return "skipped"
 
@@ -210,6 +226,7 @@ def _process_one_email(email: dict, cid: str, run_id: str, session: Session) -> 
 
     if not classification.get("is_actionable"):
         _log(session, cid, email_id, thread_id, run_id, "skipped",
+             batch_id=batch_id,
              skip_reason=classification.get("skip_reason") or "spam",
              category=classification.get("category"),
              reasoning=classification.get("reasoning"))
@@ -253,6 +270,7 @@ def _process_one_email(email: dict, cid: str, run_id: str, session: Session) -> 
         session.add(existing_task)
         session.commit()
         _log(session, cid, email_id, thread_id, run_id, "updated",
+             batch_id=batch_id,
              category=classification.get("category"), assignee_id=final["assignee_id"],
              priority=final["priority"], confidence=classification.get("confidence"),
              reasoning=classification.get("reasoning"), task_id=existing_task.task_id)
@@ -271,15 +289,23 @@ def _process_one_email(email: dict, cid: str, run_id: str, session: Session) -> 
     session.commit()
     session.refresh(task)
     _log(session, cid, email_id, thread_id, run_id, "created",
+         batch_id=batch_id,
          category=classification.get("category"), assignee_id=final["assignee_id"],
          priority=final["priority"], confidence=classification.get("confidence"),
          reasoning=classification.get("reasoning"), task_id=task.task_id)
     return "created"
 
 
-def _log(session, cid, email_id, thread_id, run_id, decision, **kwargs):
-    log = EmailLog(candidate_id=cid, email_id=email_id, thread_id=thread_id, run_id=run_id,
-                    decision=decision, **kwargs)
+def _log(session, cid, email_id, thread_id, run_id, decision, batch_id=None, **kwargs):
+    log = EmailLog(
+        candidate_id=cid,
+        email_id=email_id,
+        thread_id=thread_id,
+        run_id=run_id,
+        batch_id=batch_id,
+        decision=decision,
+        **kwargs,
+    )
     session.add(log)
     session.commit()
 
@@ -313,21 +339,43 @@ def api_stats(candidate_id: str, session: Session = Depends(get_session)):
 class ChatRequest(BaseModel):
     candidate_id: str
     query: str
+    batch_id: Optional[str] = None
 
 
 @app.post("/api/chat")
 def api_chat(payload: ChatRequest, session: Session = Depends(get_session)):
+    from fastapi import HTTPException
     cid = normalize_candidate_id(payload.candidate_id)
 
-    # Stage 1: NL -> structured query
-    parsed = gemini.nl_to_query(payload.query)
+    try:
+        # Stage 1: NL -> structured query
+        parsed = gemini.nl_to_query(payload.query)
 
-    # Stage 2: execute against real stored data
-    result = query_engine.run_query(parsed["query_type"], parsed.get("params", {}), cid, session)
+        # Stage 2: execute against real stored data (scoped to batch_id + all_time)
+        result = query_engine.run_query(
+            parsed["query_type"],
+            parsed.get("params", {}),
+            cid,
+            session,
+            batch_id=payload.batch_id,
+        )
 
-    if result.get("unsupported"):
-        return {"answer": result["reason"], "supporting_data": {}}
+        if result.get("unsupported"):
+            return {"answer": result["reason"], "supporting_data": {}}
 
-    # Stage 3: phrase the answer from the result only
-    answer = gemini.phrase_answer(payload.query, result)
-    return {"answer": answer, "supporting_data": result}
+        # Stage 3: phrase the answer from the result only
+        answer = gemini.phrase_answer(payload.query, result)
+        return {"answer": answer, "supporting_data": result}
+
+    except RuntimeError as e:
+        err_str = str(e)
+        if "429" in err_str or "quota" in err_str.lower() or "ResourceExhausted" in err_str:
+            raise HTTPException(
+                status_code=429,
+                detail=(
+                    "Gemini API quota exceeded. The free tier has two limits: "
+                    "15 requests/minute (resets in ~60s) and 500 requests/day (resets at midnight IST). "
+                    "If retrying in a minute doesn't work, your daily quota is exhausted."
+                )
+            )
+        raise HTTPException(status_code=503, detail=f"AI service unavailable: {err_str}")

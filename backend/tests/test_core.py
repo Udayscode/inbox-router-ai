@@ -111,3 +111,81 @@ def test_enum_error_shape():
 
 def test_valid_enums_pass():
     assert validate_task_enums("u_aarti", "enterprise_rfp", "high") is None
+
+
+# --- query_engine.py: test query execution & batch scoping -----------------
+
+def test_query_engine_runs():
+    from sqlmodel import create_engine, Session, SQLModel
+    from models import Task, EmailLog, Run
+    from query_engine import run_query
+
+    test_engine = create_engine("sqlite:///:memory:")
+    SQLModel.metadata.create_all(test_engine)
+
+    with Session(test_engine) as session:
+        cid = "test@example.com"
+        # Seed batch 1
+        t1 = Task(
+            candidate_id=cid,
+            source_email_id="e1",
+            thread_id="th1",
+            title="RFP Deal",
+            assignee_id="u_aarti",
+            category="enterprise_rfp",
+            priority="high",
+            deal_value_inr=50_00_000,
+            confidence=0.9,
+        )
+        l1 = EmailLog(
+            candidate_id=cid,
+            email_id="e1",
+            thread_id="th1",
+            run_id="r1",
+            batch_id="b1",
+            decision="created",
+            category="enterprise_rfp",
+            assignee_id="u_aarti",
+            priority="high",
+            task_id=t1.task_id,
+        )
+        # Seed batch 2
+        t2 = Task(
+            candidate_id=cid,
+            source_email_id="e2",
+            thread_id="th2",
+            title="SMB Demo",
+            assignee_id="u_rohit",
+            category="smb_enquiry",
+            priority="medium",
+            deal_value_inr=2_00_000,
+            confidence=0.8,
+        )
+        l2 = EmailLog(
+            candidate_id=cid,
+            email_id="e2",
+            thread_id="th2",
+            run_id="r2",
+            batch_id="b2",
+            decision="created",
+            category="smb_enquiry",
+            assignee_id="u_rohit",
+            priority="medium",
+            task_id=t2.task_id,
+        )
+        session.add_all([t1, l1, t2, l2])
+        session.commit()
+
+        # Query scoped to batch 2
+        res = run_query("count_by_category", {}, cid, session, batch_id="b2")
+        assert res["current_batch"]["smb_enquiry"] == 1
+        assert res["all_time"]["smb_enquiry"] == 1
+
+        # Category count for enterprise_rfp in batch 2 should be 0 (or not in dict), but all_time is 1
+        assert res["current_batch"].get("enterprise_rfp", 0) == 0
+        assert res["all_time"]["enterprise_rfp"] == 1
+
+        # Total deal value
+        res_val = run_query("sum_deal_value", {}, cid, session, batch_id="b1")
+        assert res_val["current_batch"]["total_deal_value_inr"] == 50_00_000
+        assert res_val["all_time"]["total_deal_value_inr"] == 50_00_000
